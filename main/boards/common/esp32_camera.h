@@ -3,11 +3,11 @@
 
 #include <esp_camera.h>
 #include <lvgl.h>
-#include <thread>
 #include <memory>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
+#include <freertos/task.h>
 
 #include "camera.h"
 
@@ -22,7 +22,7 @@ private:
     lv_img_dsc_t preview_image_;
     std::string explain_url_;
     std::string explain_token_;
-    std::thread encoder_thread_;
+    TaskHandle_t encoder_task_handle_;
 
 public:
     Esp32Camera(const camera_config_t& config);

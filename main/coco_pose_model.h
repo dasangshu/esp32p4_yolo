@@ -32,7 +32,7 @@ public:
     ~COCOPoseModel();
     
     // 初始化模型
-    bool Initialize(const std::string& model_path = "/spiffs/coco_pose_yolo11n_pose_224_p4.espdl");
+    bool Initialize(const std::string& model_path = "/spiffs/models/pose_model.espdl");
     
     // 运行推理
     PoseDetectionResult Predict(const uint8_t* image_data, int width, int height, int channels);

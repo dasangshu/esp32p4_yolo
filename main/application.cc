@@ -65,7 +65,6 @@ Application::Application() {
      xTaskCreate([](void* arg) {
         Application* app = (Application*)arg;
         char buffer[256]; // 用于存储接收到的字符
-        int buffer_index = 0;
         size_t recv_length = 0;
         while (true) {
             
@@ -86,7 +85,7 @@ Application::Application() {
                     app->WakeWordInvoke(wake_word);
                 }
                 ESP_LOGI(TAG, "00001");
-                esp_log_buffer_hex(TAG, buffer, len);
+                ESP_LOG_BUFFER_HEX(TAG, buffer, len);
             }
             vTaskDelay(pdMS_TO_TICKS(10));
         }

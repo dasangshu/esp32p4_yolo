@@ -1,6 +1,8 @@
 #include "coco_pose_model.h"
 #include <esp_vfs.h>
 #include <esp_spiffs.h>
+#include <dirent.h>
+#include <errno.h>
 
 const char* COCOPoseModel::TAG = "COCOPoseModel";
 
@@ -12,18 +14,11 @@ COCOPoseModel::~COCOPoseModel() {
 
 bool COCOPoseModel::Initialize(const std::string& model_path) {
 #if defined(CONFIG_IDF_TARGET_ESP32P4) && HAS_COCO_POSE
-    ESP_LOGI(TAG, "正在初始化COCO姿态检测模型: %s", model_path.c_str());
+    ESP_LOGI(TAG, "正在初始化COCO姿态检测模型...");
     
     try {
-        // 检查模型文件是否存在
-        FILE* f = fopen(model_path.c_str(), "r");
-        if (f == nullptr) {
-            ESP_LOGE(TAG, "无法打开模型文件: %s", model_path.c_str());
-            return false;
-        }
-        fclose(f);
-        
-        // 初始化ESP-DL模型 - 使用默认模型类型
+        // ESP-DL模型是编译时嵌入的，不需要从文件加载
+        // 直接创建模型对象，使用可用的模型类型
         pose_model_ = std::make_unique<COCOPose>(COCOPose::YOLO11N_POSE_S8_V1);
         
         if (pose_model_) {
@@ -66,7 +61,7 @@ PoseDetectionResult COCOPoseModel::Predict(const uint8_t* image_data, int width,
         dl::image::img_t input_img;
         input_img.width = input_width_;
         input_img.height = input_height_;
-        input_img.channel = 3;
+        input_img.pix_type = dl::image::DL_IMAGE_PIX_TYPE_RGB888;
         input_img.data = const_cast<uint8_t*>(image_data);  // 假设已经预处理过
         
         // 执行姿态检测
@@ -118,7 +113,7 @@ bool COCOPoseModelManager::InitializeModel(const std::string& model_path) {
     std::string actual_model_path = model_path;
     if (actual_model_path.empty()) {
         // 使用默认的模型路径
-        actual_model_path = "/spiffs/models/coco_pose_yolo11n_pose_224_p4.espdl";
+        actual_model_path = "/spiffs/models/pose_model.espdl";
     }
     
     return model_->Initialize(actual_model_path);

@@ -15,7 +15,7 @@
 #include <driver/i2c_master.h>
 #include <esp_lvgl_port.h>
 #include "esp_lcd_touch_gt911.h"
-// #include "esp32_camera.h"
+#include "esp32p4_camera.h"
 #define TAG "KevineEsp32p44b"
 
 LV_FONT_DECLARE(font_puhui_30_4);
@@ -26,7 +26,7 @@ private:
     i2c_master_bus_handle_t codec_i2c_bus_;
     Button boot_button_;
     LcdDisplay *display_;
-    // Esp32Camera* camera_;
+    Esp32P4Camera* camera_;
 
     void InitializeCodecI2c() {
         // Initialize I2C peripheral
@@ -165,39 +165,16 @@ private:
 
     
 
-    // void InitializeCamera() {
-    //     // Open camera power
-
-    //     camera_config_t config = {};
-    //     config.ledc_channel = LEDC_CHANNEL_2;  // LEDC通道选择  用于生成XCLK时钟 但是S3不用
-    //     config.ledc_timer = LEDC_TIMER_2; // LEDC timer选择  用于生成XCLK时钟 但是S3不用
-    //     config.pin_d0 = CAMERA_PIN_D0;
-    //     config.pin_d1 = CAMERA_PIN_D1;
-    //     config.pin_d2 = CAMERA_PIN_D2;
-    //     config.pin_d3 = CAMERA_PIN_D3;
-    //     config.pin_d4 = CAMERA_PIN_D4;
-    //     config.pin_d5 = CAMERA_PIN_D5;
-    //     config.pin_d6 = CAMERA_PIN_D6;
-    //     config.pin_d7 = CAMERA_PIN_D7;
-    //     config.pin_xclk = CAMERA_PIN_XCLK;
-    //     config.pin_pclk = CAMERA_PIN_PCLK;
-    //     config.pin_vsync = CAMERA_PIN_VSYNC;
-    //     config.pin_href = CAMERA_PIN_HREF;
-    //     config.pin_sccb_sda = CAMERA_PIN_SIOD;   // 这里写-1 表示使用已经初始化的I2C接口
-    //     config.pin_sccb_scl = CAMERA_PIN_SIOC;
-    //     config.sccb_i2c_port = 1;
-    //     config.pin_pwdn = CAMERA_PIN_PWDN;
-    //     config.pin_reset = CAMERA_PIN_RESET;
-    //     config.xclk_freq_hz = XCLK_FREQ_HZ;
-    //     config.pixel_format = PIXFORMAT_RGB565;
-    //     config.frame_size = FRAMESIZE_VGA;
-    //     config.jpeg_quality = 12;
-    //     config.fb_count = 1;
-    //     config.fb_location = CAMERA_FB_IN_PSRAM;
-    //     config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-
-    //     camera_ = new Esp32Camera(config);
-    // }
+    void InitializeCamera() {
+        camera_ = new Esp32P4Camera();
+        if (!camera_->Initialize()) {
+            ESP_LOGE(TAG, "摄像头初始化失败");
+            delete camera_;
+            camera_ = nullptr;
+        } else {
+            ESP_LOGI(TAG, "ESP32-P4摄像头初始化成功");
+        }
+    }
 public:
     KevineEsp32p44b() :
         boot_button_(BOOT_BUTTON_GPIO) {
@@ -206,7 +183,7 @@ public:
         InitializeLCDST7701();
         // InitializeTouch();
         InitializeButtons();
-        // InitializeCamera();
+        InitializeCamera();
 
         GetBacklight()->RestoreBrightness();
     }
@@ -220,6 +197,10 @@ public:
 
     virtual Display *GetDisplay() override {
         return display_;
+    }
+
+    virtual Camera* GetCamera() override {
+        return camera_;
     }
 
     virtual Backlight* GetBacklight() override {

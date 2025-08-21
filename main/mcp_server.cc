@@ -8,7 +8,8 @@
 #include <esp_app_desc.h>
 #include <algorithm>
 #include <cstring>
-#include <esp_pthread.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include "application.h"
 #include "display.h"
@@ -18,10 +19,14 @@
 
 #define DEFAULT_TOOLCALL_STACK_SIZE 6144
 
-McpServer::McpServer() {
+McpServer::McpServer() : tool_call_task_handle_(nullptr) {
 }
 
 McpServer::~McpServer() {
+    if (tool_call_task_handle_) {
+        vTaskDelete(tool_call_task_handle_);
+        tool_call_task_handle_ = nullptr;
+    }
     for (auto tool : tools_) {
         delete tool;
     }
@@ -347,21 +352,46 @@ void McpServer::DoToolCall(int id, const std::string& tool_name, const cJSON* to
         return;
     }
 
-    // Start a task to receive data with stack size
-    esp_pthread_cfg_t cfg = esp_pthread_get_default_config();
-    cfg.thread_name = "tool_call";
-    cfg.stack_size = stack_size;
-    cfg.prio = 1;
-    esp_pthread_set_cfg(&cfg);
+    // Structure to pass data to the task
+    struct ToolCallData {
+        McpServer* server;
+        int id;
+        McpTool* tool;
+        PropertyList arguments;
+    };
 
-    // Use a thread to call the tool to avoid blocking the main thread
-    tool_call_thread_ = std::thread([this, id, tool_iter, arguments = std::move(arguments)]() {
-        try {
-            ReplyResult(id, (*tool_iter)->Call(arguments));
-        } catch (const std::exception& e) {
-            ESP_LOGE(TAG, "tools/call: %s", e.what());
-            ReplyError(id, e.what());
-        }
-    });
-    tool_call_thread_.detach();
+    auto data = new ToolCallData{this, id, *tool_iter, std::move(arguments)};
+
+    // Clean up previous task if exists
+    if (tool_call_task_handle_) {
+        vTaskDelete(tool_call_task_handle_);
+        tool_call_task_handle_ = nullptr;
+    }
+
+    // Create FreeRTOS task instead of std::thread
+    BaseType_t result = xTaskCreate(
+        [](void* parameter) {
+            auto* data = static_cast<ToolCallData*>(parameter);
+            try {
+                data->server->ReplyResult(data->id, data->tool->Call(data->arguments));
+            } catch (const std::exception& e) {
+                ESP_LOGE(TAG, "tools/call: %s", e.what());
+                data->server->ReplyError(data->id, e.what());
+            }
+            delete data;
+            vTaskDelete(nullptr);
+        },
+        "tool_call",
+        stack_size / sizeof(StackType_t),
+        data,
+        1,
+        &tool_call_task_handle_
+    );
+
+    if (result != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create tool call task");
+        ReplyError(id, "Failed to create tool call task");
+        delete data;
+        tool_call_task_handle_ = nullptr;
+    }
 }

@@ -11,6 +11,33 @@
 
 #define TAG "Esp32Camera"
 
+struct EncoderTaskData {
+    camera_fb_t* fb;
+    QueueHandle_t jpeg_queue;
+};
+
+static void encoder_task(void* parameter) {
+    auto* data = static_cast<EncoderTaskData*>(parameter);
+    
+    frame2jpg_cb(data->fb, 80, [](void* arg, size_t index, const void* data, size_t len) -> unsigned int {
+        auto jpeg_queue = (QueueHandle_t)arg;
+        JpegChunk chunk = {
+            .data = (uint8_t*)heap_caps_aligned_alloc(16, len, MALLOC_CAP_SPIRAM),
+            .len = len
+        };
+        memcpy(chunk.data, data, len);
+        xQueueSend(jpeg_queue, &chunk, portMAX_DELAY);
+        return len;
+    }, data->jpeg_queue);
+    
+    // Signal completion by sending a null chunk
+    JpegChunk end_chunk = { .data = nullptr, .len = 0 };
+    xQueueSend(data->jpeg_queue, &end_chunk, portMAX_DELAY);
+    
+    delete data;
+    vTaskDelete(nullptr);
+}
+
 Esp32Camera::Esp32Camera(const camera_config_t& config) {
     // camera init
     esp_err_t err = esp_camera_init(&config); // 配置上面定义的参数
@@ -65,9 +92,15 @@ Esp32Camera::Esp32Camera(const camera_config_t& config) {
         ESP_LOGE(TAG, "Failed to allocate memory for preview image");
         return;
     }
+    
+    encoder_task_handle_ = nullptr;
 }
 
 Esp32Camera::~Esp32Camera() {
+    if (encoder_task_handle_) {
+        vTaskDelete(encoder_task_handle_);
+        encoder_task_handle_ = nullptr;
+    }
     if (fb_) {
         esp_camera_fb_return(fb_);
         fb_ = nullptr;
@@ -85,8 +118,11 @@ void Esp32Camera::SetExplainUrl(const std::string& url, const std::string& token
 }
 
 bool Esp32Camera::Capture() {
-    if (encoder_thread_.joinable()) {
-        encoder_thread_.join();
+    if (encoder_task_handle_) {
+        while (eTaskGetState(encoder_task_handle_) != eDeleted) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        encoder_task_handle_ = nullptr;
     }
 
     int frames_to_get = 2;
@@ -195,19 +231,24 @@ std::string Esp32Camera::Explain(const std::string& question) {
         return "{\"success\": false, \"message\": \"Failed to create JPEG queue\"}";
     }
 
-    // We spawn a thread to encode the image to JPEG
-    encoder_thread_ = std::thread([this, jpeg_queue]() {
-        frame2jpg_cb(fb_, 80, [](void* arg, size_t index, const void* data, size_t len) -> unsigned int {
-            auto jpeg_queue = (QueueHandle_t)arg;
-            JpegChunk chunk = {
-                .data = (uint8_t*)heap_caps_aligned_alloc(16, len, MALLOC_CAP_SPIRAM),
-                .len = len
-            };
-            memcpy(chunk.data, data, len);
-            xQueueSend(jpeg_queue, &chunk, portMAX_DELAY);
-            return len;
-        }, jpeg_queue);
-    });
+    // Create FreeRTOS task to encode the image to JPEG
+    auto* task_data = new EncoderTaskData{fb_, jpeg_queue};
+    
+    BaseType_t task_result = xTaskCreate(
+        encoder_task,
+        "jpeg_encoder",
+        8192,  // Stack size
+        task_data,
+        5,     // Priority
+        &encoder_task_handle_
+    );
+    
+    if (task_result != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create encoder task");
+        delete task_data;
+        vQueueDelete(jpeg_queue);
+        return "{\"success\": false, \"message\": \"Failed to create encoder task\"}";
+    }
 
     auto network = Board::GetInstance().GetNetwork();
     auto http = network->CreateHttp(3);
@@ -224,8 +265,13 @@ std::string Esp32Camera::Explain(const std::string& question) {
     http->SetHeader("Transfer-Encoding", "chunked");
     if (!http->Open("POST", explain_url_)) {
         ESP_LOGE(TAG, "Failed to connect to explain URL");
-        // Clear the queue
-        encoder_thread_.join();
+        // Wait for the encoder task to finish and clear the queue
+        if (encoder_task_handle_) {
+            while (eTaskGetState(encoder_task_handle_) != eDeleted) {
+                vTaskDelay(pdMS_TO_TICKS(10));
+            }
+            encoder_task_handle_ = nullptr;
+        }
         JpegChunk chunk;
         while (xQueueReceive(jpeg_queue, &chunk, portMAX_DELAY) == pdPASS) {
             if (chunk.data != nullptr) {
@@ -272,8 +318,13 @@ std::string Esp32Camera::Explain(const std::string& question) {
         total_sent += chunk.len;
         heap_caps_free(chunk.data);
     }
-    // Wait for the encoder thread to finish
-    encoder_thread_.join();
+    // Wait for the encoder task to finish
+    if (encoder_task_handle_) {
+        while (eTaskGetState(encoder_task_handle_) != eDeleted) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        encoder_task_handle_ = nullptr;
+    }
     // 清理队列
     vQueueDelete(jpeg_queue);
 

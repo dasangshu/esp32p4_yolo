@@ -852,6 +852,57 @@ void LcdDisplay::SetPreviewImage(const lv_img_dsc_t* img_dsc) {
 }
 #endif
 
+void LcdDisplay::SetupUI() {
+    DisplayLockGuard lock(this);
+
+    auto screen = lv_screen_active();
+    lv_obj_set_style_text_font(screen, fonts_.text_font, 0);
+    lv_obj_set_style_text_color(screen, current_theme_.text, 0);
+    lv_obj_set_style_bg_color(screen, current_theme_.background, 0);
+
+    /* Container */
+    container_ = lv_obj_create(screen);
+    lv_obj_set_size(container_, LV_HOR_RES, LV_VER_RES);
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(container_, 0, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_pad_row(container_, 0, 0);
+    lv_obj_set_style_bg_color(container_, current_theme_.background, 0);
+    lv_obj_set_style_border_color(container_, current_theme_.border, 0);
+
+    /* Status bar */
+    status_bar_ = lv_obj_create(container_);
+    lv_obj_set_size(status_bar_, LV_HOR_RES, fonts_.text_font->line_height);
+    lv_obj_set_style_radius(status_bar_, 0, 0);
+    lv_obj_set_style_bg_color(status_bar_, current_theme_.background, 0);
+    lv_obj_set_style_text_color(status_bar_, current_theme_.text, 0);
+    
+    /* Content */
+    content_ = lv_obj_create(container_);
+    lv_obj_set_scrollbar_mode(content_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_radius(content_, 0, 0);
+    lv_obj_set_width(content_, LV_HOR_RES);
+    lv_obj_set_flex_grow(content_, 1);
+    lv_obj_set_style_pad_all(content_, 5, 0);
+    lv_obj_set_style_bg_color(content_, current_theme_.chat_background, 0);
+    lv_obj_set_style_border_color(content_, current_theme_.border, 0);
+}
+
+void LcdDisplay::SetPreviewImage(const lv_img_dsc_t* img_dsc) {
+    DisplayLockGuard lock(this);
+    
+    if (preview_image_ == nullptr || content_ == nullptr) {
+        return;
+    }
+    
+    if (img_dsc != nullptr) {
+        lv_img_set_src(preview_image_, img_dsc);
+        lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 void LcdDisplay::SetEmotion(const char* emotion) {
     struct Emotion {
         const char* icon;
@@ -884,7 +935,7 @@ void LcdDisplay::SetEmotion(const char* emotion) {
     
     // 查找匹配的表情
     std::string_view emotion_view(emotion);
-    auto it = std::find_if(emotions.begin(), emotions.end(),
+    (void)std::find_if(emotions.begin(), emotions.end(),
         [&emotion_view](const Emotion& e) { return e.text == emotion_view; });
 
     DisplayLockGuard lock(this);
@@ -908,6 +959,7 @@ void LcdDisplay::SetEmotion(const char* emotion) {
 //     }
 // #endif
     const char *video_path = "neutral.mjpeg"; // 默认视频
+    (void)video_path;  // Mark as intentionally unused
     printf("emotion: %s\n", emotion);
     if (strcmp(emotion, "happy") == 0)
     {

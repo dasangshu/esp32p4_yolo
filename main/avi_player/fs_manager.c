@@ -118,31 +118,46 @@ esp_err_t fs_manager_init(fs_config_t *config)
 // 新增函数：自动尝试初始化TF卡，失败则初始化SPIFFS
 esp_err_t fs_manager_auto_init(fs_config_t *sd_config, fs_config_t *spiffs_config)
 {
-    esp_err_t ret;
+    esp_err_t ret_sd, ret_spiffs;
+    bool sd_success = false, spiffs_success = false;
     
     // 先尝试初始化TF卡
     ESP_LOGI(TAG, "Trying to initialize SD card first...");
-    current_fs_type = FS_TYPE_SD_CARD;
-    ret = init_sdcard(sd_config);
+    ret_sd = init_sdcard(sd_config);
     
-    if (ret == ESP_OK) {
+    if (ret_sd == ESP_OK) {
         // TF卡初始化成功
         ESP_LOGI(TAG, "SD card initialized successfully");
-        return ESP_OK;
+        current_fs_type = FS_TYPE_SD_CARD;
+        sd_success = true;
+    } else {
+        ESP_LOGI(TAG, "SD card initialization failed, error: %s", esp_err_to_name(ret_sd));
     }
     
-    // TF卡初始化失败，尝试初始化SPIFFS
-    ESP_LOGI(TAG, "SD card initialization failed, trying SPIFFS...");
-    current_fs_type = FS_TYPE_SPIFFS;
-    ret = init_spiffs(spiffs_config);
+    // 同时初始化SPIFFS（用于模型文件等）
+    ESP_LOGI(TAG, "Initializing SPIFFS for model files...");
+    ret_spiffs = init_spiffs(spiffs_config);
     
-    if (ret == ESP_OK) {
+    if (ret_spiffs == ESP_OK) {
         ESP_LOGI(TAG, "SPIFFS initialized successfully");
+        spiffs_success = true;
+    } else {
+        ESP_LOGI(TAG, "SPIFFS initialization failed, error: %s", esp_err_to_name(ret_spiffs));
+    }
+    
+    // 如果SD卡成功，优先使用SD卡作为主文件系统
+    if (sd_success) {
+        current_fs_type = FS_TYPE_SD_CARD;
+        ESP_LOGI(TAG, "Using SD card as primary filesystem, SPIFFS available for models");
+        return ESP_OK;
+    } else if (spiffs_success) {
+        current_fs_type = FS_TYPE_SPIFFS;
+        ESP_LOGI(TAG, "Using SPIFFS as primary filesystem");
         return ESP_OK;
     }
     
     ESP_LOGE(TAG, "Both SD card and SPIFFS initialization failed");
-    return ret;
+    return (ret_sd != ESP_OK) ? ret_sd : ret_spiffs;
 }
 
 void fs_manager_list_files(const char* path)

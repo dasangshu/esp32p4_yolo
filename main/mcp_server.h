@@ -11,6 +11,8 @@
 #include <thread>
 
 #include <cJSON.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 // 添加类型别名
 using ReturnValue = std::variant<bool, int, std::string>;
@@ -275,7 +277,7 @@ private:
     void DoToolCall(int id, const std::string& tool_name, const cJSON* tool_arguments, int stack_size);
 
     std::vector<McpTool*> tools_;
-    std::thread tool_call_thread_;
+    TaskHandle_t tool_call_task_handle_;
 };
 
 #endif // MCP_SERVER_H
