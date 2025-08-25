@@ -935,89 +935,83 @@ void LcdDisplay::SetEmotion(const char* emotion) {
     
     // 查找匹配的表情
     std::string_view emotion_view(emotion);
-    (void)std::find_if(emotions.begin(), emotions.end(),
+    auto it = std::find_if(emotions.begin(), emotions.end(),
         [&emotion_view](const Emotion& e) { return e.text == emotion_view; });
 
     DisplayLockGuard lock(this);
-    // if (emotion_label_ == nullptr) {
-    //     return;
-    // }
-
-//     // 如果找到匹配的表情就显示对应图标，否则显示默认的neutral表情
-//     lv_obj_set_style_text_font(emotion_label_, fonts_.emoji_font, 0);
-//     if (it != emotions.end()) {
-//         lv_label_set_text(emotion_label_, it->icon);
-//     } else {
-//         lv_label_set_text(emotion_label_, "😶");
-//     }
-
-// #if !CONFIG_USE_WECHAT_MESSAGE_STYLE
-//     // 显示emotion_label_，隐藏preview_image_
-//     lv_obj_clear_flag(emotion_label_, LV_OBJ_FLAG_HIDDEN);
-//     if (preview_image_ != nullptr) {
-//         lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
-//     }
-// #endif
-    const char *video_path = "neutral.mjpeg"; // 默认视频
-    (void)video_path;  // Mark as intentionally unused
+    
+    // 首先尝试播放视频（如果是.mjpeg文件或已知的视频表情）
+    const char *video_path = nullptr;
     printf("emotion: %s\n", emotion);
-    if (strcmp(emotion, "happy") == 0)
-    {
+    
+    if (strstr(emotion, ".mjpeg") != nullptr) {
+        // 直接是.mjpeg文件
+        video_path = emotion;
+    } else if (strcmp(emotion, "neutral") == 0) {
+        video_path = "idle.mjpeg"; // 使用idle作为neutral的映射
+    } else if (strcmp(emotion, "happy") == 0) {
         video_path = "happy.mjpeg";
-    }
-    else if (strcmp(emotion, "laughing") == 0)
-    {
+    } else if (strcmp(emotion, "laughing") == 0) {
         video_path = "laughing.mjpeg";
-    }
-    else if (strcmp(emotion, "funny") == 0)
-    {
+    } else if (strcmp(emotion, "funny") == 0) {
         video_path = "funny.mjpeg";
-    }
-    else if (strcmp(emotion, "sad") == 0)
-    {
+    } else if (strcmp(emotion, "sad") == 0) {
         video_path = "sad.mjpeg";
-    }
-    else if (strcmp(emotion, "angry") == 0)
-    {
+    } else if (strcmp(emotion, "angry") == 0) {
         video_path = "angry.mjpeg";
-    }
-    else if (strcmp(emotion, "crying") == 0)
-    {
+    } else if (strcmp(emotion, "crying") == 0) {
         video_path = "crying.mjpeg";
-    }
-    else if (strcmp(emotion, "loving") == 0)
-    {
+    } else if (strcmp(emotion, "loving") == 0) {
         video_path = "loving.mjpeg";
-    }
-    else if (strcmp(emotion, "embarrassed") == 0)
-    {
+    } else if (strcmp(emotion, "embarrassed") == 0) {
         video_path = "embarrassed.mjpeg";
-    }
-    else if (strcmp(emotion, "surprised") == 0)
-    {
+    } else if (strcmp(emotion, "surprised") == 0) {
         video_path = "surprised.mjpeg";
-    }
-    else if (strcmp(emotion, "thinking") == 0)
-    {
+    } else if (strcmp(emotion, "thinking") == 0) {
         video_path = "thinking.mjpeg";
-    }
-    else if (strcmp(emotion, "sleepy") == 0)
-    {
+    } else if (strcmp(emotion, "sleepy") == 0) {
         video_path = "sleepy.mjpeg";
-    }
-    else if (strcmp(emotion, "cool") == 0)
-    {
+    } else if (strcmp(emotion, "cool") == 0) {
         video_path = "cool.mjpeg";
-    }
-    else if (strcmp(emotion, "confused") == 0)
-    {
-        video_path = "confused.mjpeg";
-    }
-    else if (strcmp(emotion, "talk") == 0)
-    {
+    } else if (strcmp(emotion, "confused") == 0) {
+        video_path = "confuesed.mjpeg"; // 注意：SD卡中的文件名拼写是confuesed
+    } else if (strcmp(emotion, "talk") == 0) {
         video_path = "talk.mjpeg";
     }
-    mjpeg_player_port_play_file(emotion);
+    
+    if (video_path != nullptr) {
+        // 播放视频，隐藏emoji标签
+        mjpeg_player_port_play_file(video_path);
+#if !CONFIG_USE_WECHAT_MESSAGE_STYLE
+        if (emotion_label_ != nullptr) {
+            lv_obj_add_flag(emotion_label_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (preview_image_ != nullptr) {
+            lv_obj_clear_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+        }
+#endif
+    } else {
+        // 显示emoji表情
+        if (emotion_label_ == nullptr) {
+            return;
+        }
+
+        // 如果找到匹配的表情就显示对应图标，否则显示默认的neutral表情
+        lv_obj_set_style_text_font(emotion_label_, fonts_.emoji_font, 0);
+        if (it != emotions.end()) {
+            lv_label_set_text(emotion_label_, it->icon);
+        } else {
+            lv_label_set_text(emotion_label_, "😶");
+        }
+
+#if !CONFIG_USE_WECHAT_MESSAGE_STYLE
+        // 显示emotion_label_，隐藏preview_image_
+        lv_obj_clear_flag(emotion_label_, LV_OBJ_FLAG_HIDDEN);
+        if (preview_image_ != nullptr) {
+            lv_obj_add_flag(preview_image_, LV_OBJ_FLAG_HIDDEN);
+        }
+#endif
+    }
 }
 void LcdDisplay::SetFaceImage(uint8_t *frame_buffer, int width, int height)
 {
